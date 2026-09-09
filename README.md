@@ -33,5 +33,6 @@ tech0-pos-app/
 
 | ドキュメント | 場所 |
 |---|---|
-| Lv2 POS 要件定義書 | [docs/requirements/](docs/requirements/) |
+| Lv2 POS 要件定義書 | [docs/requirements/POS-Lv2-要件定義書.md](docs/requirements/POS-Lv2-要件定義書.md) |
+| **Lv2 POS 設計仕様書** | [docs/design/POS-Lv2-設計仕様書.md](docs/design/POS-Lv2-設計仕様書.md) |
 | AI活用ログ | [docs/ai-dev-log/](docs/ai-dev-log/) |
