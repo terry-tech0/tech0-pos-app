@@ -1,0 +1,4 @@
+cashier_id,login_id,cashier_name,role,is_active,用途
+1,cashier01,山田花子,CASHIER,TRUE,基本ケース。レジ担当
+2,retired01,退職者テスト,CASHIER,FALSE,IT-008 無効な担当はログインできないこと
+3,manager01,店長テスト,MANAGER,TRUE,UAT-011 税率マスタ変更の実施者

@@ -1,0 +1,3 @@
+tax_category,valid_from,valid_to,rate,用途
+REDUCED,2019-10-01,,0.0800,初期値（軽減税率）
+STANDARD,2019-10-01,,0.1000,初期値（標準税率）
