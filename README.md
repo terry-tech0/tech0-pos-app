@@ -23,16 +23,37 @@ tech0-pos-app/
 ├── README.md
 ├── CLAUDE.md              # AI駆動開発の前提・規約（Claude Code が毎回読む）
 ├── docs/
-│   ├── requirements/      # 要件定義書（Lv2 課題の提出物はここ）
-│   ├── design/            # 設計ドキュメント
+│   ├── requirements/      # 要件定義書
+│   ├── design/            # 設計仕様書
+│   ├── test/              # テスト仕様書（総則＋詳細4本＋テストデータ）
 │   └── ai-dev-log/        # 生成AI活用の記録・学び・失敗の共有ネタ
 └── src/                   # アプリ本体（Lv1/Lv2 実装時に追加）
 ```
 
+## V字モデルでの進め方
+
+要求から実装へ下りていく左側と、テストで確かめる右側を、文書レベルで1対1に対応させている。
+
+```
+  要求（講座配布の要求定義書）  ←────→  ユーザーテスト（UAT）
+  要件定義書 §3 機能要件        ←────→  結合・機能テスト（IT）
+  設計仕様書（クラス・API・DB）  ←────→  単体テスト（UT / jest・pytest）
+                    └── 実装 ──┘
+```
+
+設計仕様書 §10 のテスト観点 `TC-01`〜`TC-20` が、
+テスト仕様書で190のテストケースへ詳細化されている。
+
 ## ドキュメント
 
-| ドキュメント | 場所 |
-|---|---|
-| Lv2 POS 要件定義書 | [docs/requirements/POS-Lv2-要件定義書.md](docs/requirements/POS-Lv2-要件定義書.md) |
-| **Lv2 POS 設計仕様書** | [docs/design/POS-Lv2-設計仕様書.md](docs/design/POS-Lv2-設計仕様書.md) |
-| AI活用ログ | [docs/ai-dev-log/](docs/ai-dev-log/) |
+| ドキュメント | 版 | 場所 |
+|---|---|---|
+| Lv2 POS 要件定義書 | v0.2 | [docs/requirements/POS-Lv2-要件定義書.md](docs/requirements/POS-Lv2-要件定義書.md) |
+| Lv2 POS 設計仕様書 | v1.0 | [docs/design/POS-Lv2-設計仕様書.md](docs/design/POS-Lv2-設計仕様書.md) |
+| **Lv2 POS テスト仕様書（総則）** | v1.0 | [docs/test/POS-Lv2-テスト仕様書.md](docs/test/POS-Lv2-テスト仕様書.md) |
+| └ 単体テスト（Backend / pytest） | | [docs/test/01-単体テスト-backend-pytest.md](docs/test/01-単体テスト-backend-pytest.md) |
+| └ 単体テスト（Frontend / jest） | | [docs/test/02-単体テスト-frontend-jest.md](docs/test/02-単体テスト-frontend-jest.md) |
+| └ 結合・機能テスト | | [docs/test/03-結合機能テスト.md](docs/test/03-結合機能テスト.md) |
+| └ ユーザーテスト（UAT） | | [docs/test/04-ユーザーテスト.md](docs/test/04-ユーザーテスト.md) |
+| └ テストデータ | | [docs/test/fixtures/](docs/test/fixtures/) |
+| AI活用ログ | | [docs/ai-dev-log/](docs/ai-dev-log/) |
