@@ -21,6 +21,7 @@ venv/
 node_modules/
 dist/
 .next/
+*.tsbuildinfo
 
 # IDE
 .vscode/
