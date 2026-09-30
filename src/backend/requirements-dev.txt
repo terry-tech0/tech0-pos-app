@@ -1,0 +1,6 @@
+# Development / test dependencies. Not installed in the production image.
+# ASCII only (see requirements.txt for why).
+-r requirements.txt
+pytest==8.4.2
+httpx==0.28.1
+freezegun==1.5.2

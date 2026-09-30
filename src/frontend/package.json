@@ -1,0 +1,29 @@
+{
+  "name": "tech0-pos-app-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lv2 POS frontend. Next.js App Router + BFF. Spec: docs/design/POS-Lv2-設計仕様書.md",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@swc/core": "1.16.12",
+    "@swc/jest": "0.2.39",
+    "@types/jest": "30.0.0",
+    "@types/node": "26.6.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "jest": "30.5.2",
+    "typescript": "7.0.2"
+  }
+}

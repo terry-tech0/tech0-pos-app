@@ -1,6 +1,9 @@
 # 環境変数・認証情報
 .env
 .env.*
+# ただし「ひな形」は共有する（値は空。何を設定すべきかが分かるように）
+!.env.example
+!.env.local.example
 *.pem
 *.key
 

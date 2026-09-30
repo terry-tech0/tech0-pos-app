@@ -57,3 +57,60 @@ tech0-pos-app/
 | └ ユーザーテスト（UAT） | | [docs/test/04-ユーザーテスト.md](docs/test/04-ユーザーテスト.md) |
 | └ テストデータ | | [docs/test/fixtures/](docs/test/fixtures/) |
 | AI活用ログ | | [docs/ai-dev-log/](docs/ai-dev-log/) |
+
+## 実装の状況（2026-09-30 時点）
+
+Lv2 のコードを実装中。**単体テスト 141 件が全件合格**、TypeScript の型チェックはエラー0。
+
+| 層 | 実装 | 単体テスト |
+|---|---|---|
+| バックエンド（FastAPI） | `AmountCalculator` / `AuthService` / `CheckoutService` / API B-01〜B-07 | **94 件合格**（pytest） |
+| フロントエンド（Next.js） | BFF A-01〜A-07 ／ ログイン画面 ／ レジ画面 ／ 画面側の金額計算 | **47 件合格**（jest） |
+| DB | スキーマ定義（`sql/schema.sql`）・投入スクリプト | 未実行 |
+
+**画面とサーバで同じ金額になることの確認**：設計 §4.4 の計算手順を Python と TypeScript の
+両方に実装しているため、ランダム 3,000 ケース（税率5パターン）で両者の結果を突き合わせ、
+**不一致0件**を確認した。税率は要求 REQ-08 により変わりうるので、
+画面側は税率を 1/10000 単位の整数に直して整数演算だけで計算している。
+
+### 未実施（今週対応）
+
+- DB への接続と投入、結合テスト（46件）、ユーザーテスト（18件）
+  → 会社のネットワークが直接のTCP通信を塞いでいて Azure MySQL に到達できないため、自宅環境で実施する
+- 設計仕様書への確認事項 T-1〜T-7 の設計側での確定（本実装では推奨値を採用し、コード内に根拠を明記）
+
+## 動かし方
+
+### バックエンド
+
+```powershell
+cd srcackend
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+# .env.example を .env にコピーし、DATABASE_URL と JWT_SECRET_KEY を設定する
+.venv\Scripts\python.exe -m scripts.init_db    # テーブル作成
+$env:SEED_CASHIER_PASSWORD = "<任意のテスト用パスワード>"
+.venv\Scripts\python.exe -m scripts.seed       # fixtures の投入
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+```
+
+単体テストは DB を使わないので、`.env` が無くても動く。
+
+```powershell
+cd srcackend
+.venv\Scripts\python.exe -m pytest
+```
+
+### フロントエンド
+
+```powershell
+cd srcrontend
+npm install
+# .env.local.example を .env.local にコピーする
+npm run dev        # http://localhost:3000
+npm run typecheck  # 型チェック
+npm test           # 単体テスト（jest）
+```
+
+社内プロキシ環境では `npm install --proxy http://<プロキシ>:8080 --https-proxy http://<プロキシ>:8080`、
+`pip install --proxy http://<プロキシ>:8080` を付ける。

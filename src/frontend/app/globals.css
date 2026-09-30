@@ -1,0 +1,117 @@
+/* レジ画面の見た目。設計仕様書 §9.2 レジ画面のレイアウト。
+   レジ未経験のアルバイトが10分の説明で使えることが要件（NFR-PERF-02）なので、
+   装飾より「文字が大きい・押す場所が分かる」を優先する。 */
+
+:root {
+  --bg: #f5f6f7;
+  --panel: #ffffff;
+  --line: #d9dde1;
+  --text: #1c1f23;
+  --muted: #5c6670;
+  --accent: #1a6b3c;
+  --danger: #b3261e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Meiryo UI", "Hiragino Kaku Gothic ProN", sans-serif;
+  font-size: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: bold;
+}
+
+.container { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.panel h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: var(--muted);
+  font-weight: bold;
+}
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+input[type="text"], input[type="password"], input[type="number"] {
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 16px;
+  font-family: inherit;
+}
+
+button {
+  padding: 9px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.secondary { background: #fff; color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+button.checkout {
+  width: 100%;
+  padding: 18px;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+th { font-size: 13px; color: var(--muted); }
+td.num, th.num { text-align: right; }
+
+/* エラーは入力欄の直下に出す（設計 §9.2 ②の注意） */
+.error {
+  margin: 8px 0 0;
+  padding: 9px 12px;
+  border-radius: 4px;
+  background: #fdecea;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.notice {
+  margin: 8px 0 0;
+  padding: 9px 12px;
+  border-radius: 4px;
+  background: #e8f3ec;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.totals { font-size: 15px; }
+.totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+.totals .grand {
+  border-top: 2px solid var(--text);
+  margin-top: 8px;
+  padding-top: 10px;
+  font-size: 22px;
+  font-weight: bold;
+}
+.muted { color: var(--muted); font-size: 13px; }
