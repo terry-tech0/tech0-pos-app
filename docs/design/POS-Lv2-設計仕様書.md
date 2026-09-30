@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | 文書名 | Lv2 簡易POSアプリ改 設計仕様書 |
-| 版 | 1.0 |
+| 版 | 1.1 |
 | 作成日 | 2026-09-09 |
 | 作成者 | terry（Tech0 Step4 / 12期） |
 | 上位文書 | [Lv2 簡易POSアプリ改 要件定義書 v0.2](../requirements/POS-Lv2-要件定義書.md) |
@@ -464,6 +464,7 @@ erDiagram
 
     transactions {
         bigint transaction_id PK "自動採番"
+        char checkout_id UK "会計ごとの整理番号 UUID 二重保存防止"
         datetime transacted_at "確定日時 ミリ秒"
         int cashier_id FK "JWTから確定した担当"
         char member_code FK "非会員は NULL"
@@ -498,7 +499,7 @@ erDiagram
 | `members` | `member_code` | — | 学習用の架空データのみ（NFR-SEC-06） |
 | `products` | `product_code` | `INDEX(tax_category)` | 初期データは架空商品30件（食品・雑貨混在） |
 | `tax_rates` | `(tax_category, valid_from)` | — | **行を追加するだけで税率改定に対応**（REQ-08 / NFR-OPS-04） |
-| `transactions` | `transaction_id` | `INDEX(transacted_at)`, `INDEX(cashier_id)` | 追記のみ。UPDATE/DELETE しない |
+| `transactions` | `transaction_id` | `UNIQUE(checkout_id)`, `INDEX(transacted_at)`, `INDEX(cashier_id)` | 追記のみ。UPDATE/DELETE しない。`checkout_id` の一意制約で同じ会計の二重保存を防ぐ（D-7） |
 | `transaction_lines` | `(transaction_id, line_no)` | `INDEX(product_code)` | 商品名・単価・税率を転記して保存 |
 
 ### 4.3 データ設計上の判断
@@ -511,6 +512,7 @@ erDiagram
 | D-4 | 消費税を `tax_reduced` / `tax_standard` の2列で持つ | 税率区分ごとの内訳表示（F-08）に必要。合算だけだと後から内訳を復元できない |
 | D-5 | 履歴の削除・更新をアプリから提供しない | NFR-OPS-05。加えて、アプリが使うDBユーザーから `transactions` 系の `DELETE` 権限を外す運用とする |
 | D-6 | 商品・会員・担当に `is_active` を持たせ、物理削除しない | 退職者や取扱終了商品を消すと、過去の履歴の外部キーが壊れる |
+| D-7 | 取引に会計ごとの整理番号 `checkout_id`（UUID・`CHAR(36)`）を持たせ、一意制約をかける | 購入確定が通信の再送や直接呼び出しで2回届いても、取引を1件しか保存しないため（冪等性）。画面側でボタンを非活性にする対策（§9.3）だけでは、ブラウザの外で起きる再送を防げない。**v1.1 で追加**（結合テスト IT-042 が二重保存を検出したことを受けて） |
 
 ### 4.4 金額計算の仕様
 
@@ -639,6 +641,7 @@ erDiagram
 
 ```jsonc
 {
+  "checkoutId": "3f2c8a1e-5b7d-4c9a-8e21-6d0f4b9a7c13", // 会計ごとの整理番号（二重保存防止）
   "memberCode": "1234567890",        // 非会員は null
   "lines": [
     { "productCode": "4901234567894", "quantity": 2 },
@@ -653,6 +656,7 @@ erDiagram
 
 | 区分 | 項目 | 型 | 必須 | 制約・説明 |
 |---|---|---|---|---|
+| 入力 | `checkoutId` | `string` | ○ | UUID（小文字16進とハイフンの36文字）。画面が**会計の開始時に1つ作り**、押し直しでも同じ値を送る。保存成功後に次の会計用に作り直す（D-7） |
 | 入力 | `memberCode` | `string \| null` | ○ | 数字10桁、または `null`（非会員） |
 | 入力 | `lines` | `Line[]` | ○ | 1〜100要素。0件は `E-TXN-002` |
 | 入力 | `lines[].productCode` | `string` | ○ | 数字8桁または13桁 |
@@ -664,6 +668,11 @@ erDiagram
 | 出力 | `transactedAt` | `string` | — | ISO 8601 |
 | 出力 | `amount` | `Amount` | — | **サーバが計算した確定金額** |
 | 出力 | `lines[]` | `ConfirmedLine[]` | — | 商品名・単価・数量・行金額（レシート表示用） |
+
+**二重送信の扱い（v1.1）**：同じ `checkoutId` の取引が既に保存されていれば、**新しく保存せず、保存済みの取引を `200` で返す**（新規保存は `201`）。
+画面から見ると1回目と同じ成功の応答になるので、通信の再送で「購入に失敗した」と誤解させない。
+2つの要求がほぼ同時に届いた場合も、DBの一意制約（D-7）で2件目の保存が失敗するので、その場合も保存済みの取引を返す。
+同じ `checkoutId` で中身の違う要求が来ても、保存済みの取引を返す（整理番号が会計を識別する。画面は成功のたびに番号を作り直すので、通常の操作では起きない）。
 
 エラー：`400 E-TXN-001`（金額照合の不一致。`details.serverAmount` にサーバ計算値を入れて返す）、`400 E-TXN-002`（明細0件）、`400 E-VAL-002`（数量が範囲外）、`404 E-PROD-001`（明細に未登録商品）、`401 E-AUTH-002`（トークン期限切れ）。
 
@@ -702,6 +711,7 @@ export interface Amount {
 }
 
 export interface CheckoutRequest {
+  checkoutId: string;    // 会計ごとの整理番号 UUID（D-7）
   memberCode: string | null;
   lines: Array<{ productCode: string; quantity: number }>;
   clientAmount: Amount;
@@ -740,7 +750,10 @@ class CheckoutLineIn(BaseModel):
     product_code: PRODUCT_CODE
     quantity: conint(ge=1, le=99)
 
+CHECKOUT_ID = constr(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
 class CheckoutRequest(BaseModel):
+    checkout_id: CHECKOUT_ID          # 会計ごとの整理番号（D-7）
     member_code: MEMBER_CODE | None = None
     lines: list[CheckoutLineIn] = Field(min_length=1, max_length=100)
     client_amount: Amount
@@ -769,6 +782,7 @@ class CheckoutRequest(BaseModel):
 | 割引額 | 整数 | 0 | 税抜合計以下 | 円・整数 | 割引が合計を超えてマイナス会計になることを構造的に防ぐ |
 | 税率 | 小数 | 0.0000 | 1.0000 | `DECIMAL(5,4)` | 税率マスタの誤入力（`8` と入れて800%になる等）を防ぐ |
 | 商品名 | 文字列 | 1文字 | 100文字 | — | DBの `VARCHAR(100)` と一致させる |
+| 会計の整理番号 `checkoutId` | 文字列 | 36文字 | 36文字 | UUID（小文字16進とハイフン） | DBの `CHAR(36)` と一致させる。形式を固定し、任意の文字列を一意キーとして溜め込ませない |
 
 > **「商品数の下限・上限」は2種類ある**という整理が要点。**1行の数量**（1〜99）と**1会計の行数**（1〜100）は別の上限で、
 > 前者は打ち間違い対策、後者はリクエストサイズと運用の上限。混同すると、どちらかのチェックが抜ける。
@@ -1145,6 +1159,9 @@ stateDiagram-v2
 
 「確定処理中」を独立した状態として持つのは、**購入ボタンの二重押しで取引が2件保存されるのを防ぐ**ため。
 
+ただし、これは画面の中だけの対策で、通信の再送や API の直接呼び出しは防げない。**サーバ側でも会計の整理番号 `checkoutId` で二重保存を防ぐ**（v1.1。D-7・§5.4 A-07）。
+整理番号は「会員待ち」に入るときに作り、「確定処理中」から「商品登録中」に戻っても（金額不一致・通信エラー）作り直さない。作り直すのは保存成功後だけ。
+
 ---
 
 ## 10. テスト観点
@@ -1208,6 +1225,7 @@ Lv2 では意図的に採らなかった設計を、判断の記録として残�
 | 版 | 日付 | 内容 |
 |---|---|---|
 | 1.0 | 2026-09-09 | 初版。要件定義書 v0.2 を受けて、構成・UML・ER図・API・入力上下限・エラー処理・セキュリティを設計 |
+| 1.1 | 2026-09-30 | 二重保存の防止を追加（D-7、§4.1、§4.2、§5.4 A-07、§5.5、§6、§9.3）。結合テスト IT-042 で、同じ購入確定を2回送ると2件保存されることが分かったため。会計ごとの整理番号 `checkoutId` と一意制約で、2回目は保存済みの取引を返す |
 
 ---
 

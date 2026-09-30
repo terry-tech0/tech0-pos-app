@@ -10,6 +10,7 @@ import {
   canCheckout,
   changeQuantity,
   clearCart,
+  newCheckoutId,
   removeLine,
   toRequestLines,
 } from "@/lib/cart";
@@ -159,5 +160,16 @@ describe("toRequestLines", () => {
     expect(body).toEqual([{ productCode: "A", quantity: 2 }]);
     // unitPrice が混ざっていないことを明示的に確認する（TC-14 の画面側）
     expect(Object.keys(body[0])).toEqual(["productCode", "quantity"]);
+  });
+});
+
+describe("newCheckoutId（設計 v1.1 D-7 会計の整理番号）", () => {
+  test("サーバと同じ形式（UUID の小文字36文字）で作られる", () => {
+    expect(newCheckoutId()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  test("呼ぶたびに別の番号になる（別の会計が同じ取引として扱われない）", () => {
+    const ids = new Set(Array.from({ length: 100 }, () => newCheckoutId()));
+    expect(ids.size).toBe(100);
   });
 });

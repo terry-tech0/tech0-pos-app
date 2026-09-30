@@ -64,6 +64,7 @@ export interface Me {
 
 /** 購入確定（A-07）のリクエスト */
 export interface CheckoutRequest {
+  checkoutId: string; // 会計ごとの整理番号 UUID（設計 v1.1 D-7）
   memberCode: string | null;
   lines: Array<{ productCode: string; quantity: number }>;
   clientAmount: Amount;

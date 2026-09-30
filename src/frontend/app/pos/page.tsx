@@ -9,6 +9,8 @@
  *   会員待ち -> 商品登録中 -> 確定処理中 -> 確定完了 -> （クリアして）会員待ち
  * 「確定処理中」を独立した状態として持つのは、購入ボタンの二重押しで
  * 取引が2件保存されるのを防ぐため。
+ * 通信の再送など画面の外で起きる二重送信は、会計の整理番号 checkoutId で
+ * サーバ側が防ぐ（設計 v1.1 D-7）。
  *
  * エラー処理の原則（設計 §7.2 ER-1）:
  *   **エラーで購入リストを消さない**（E-AUTH-002 を除く）。
@@ -20,7 +22,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, checkout, fetchMe, fetchMember, fetchProduct, fetchTaxRates, logout } from "@/lib/api";
 import { calculateAmount } from "@/lib/amount";
-import { addProduct, canCheckout, changeQuantity, clearCart, removeLine, toRequestLines } from "@/lib/cart";
+import {
+  addProduct,
+  canCheckout,
+  changeQuantity,
+  clearCart,
+  newCheckoutId,
+  removeLine,
+  toRequestLines,
+} from "@/lib/cart";
 import type { Amount, CartLine, Me, Member, TaxRateMap } from "@/types/pos";
 
 /** 画面の状態。設計 §9.3 の4状態 */
@@ -45,6 +55,8 @@ export default function PosPage() {
   const [productError, setProductError] = useState<string | null>(null);
 
   const [lines, setLines] = useState<CartLine[]>([]);
+  // 会計の整理番号。押し直しでは作り直さず、保存に成功したら次の会計用に作り直す（設計 v1.1 §9.3）
+  const [checkoutId, setCheckoutId] = useState<string>(() => newCheckoutId());
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [doneMessage, setDoneMessage] = useState<string | null>(null);
   /** E-TXN-001 でサーバが返してきた正しい金額。画面をこれに揃える（ER-5） */
@@ -218,6 +230,7 @@ export default function PosPage() {
     try {
       const clientAmount = calculateAmount(lines, member?.isDiscountTarget === true, taxRates);
       const response = await checkout({
+        checkoutId,
         memberCode: member?.memberCode ?? null,
         lines: toRequestLines(lines),
         clientAmount,
@@ -227,6 +240,7 @@ export default function PosPage() {
         `購入を登録しました（取引番号 ${response.transactionId}／お支払い ${response.amount.total.toLocaleString()} 円）`,
       );
       setLines(clearCart());
+      setCheckoutId(newCheckoutId());
       setMember(null);
       setTreatAsNonMember(false);
       setServerAmount(null);

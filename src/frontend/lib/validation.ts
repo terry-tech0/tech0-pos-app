@@ -39,6 +39,11 @@ export const productCodeSchema = z
   .string()
   .regex(/^(\d{8}|\d{13})$/, "商品コードは数字8桁または13桁です");
 
+/** 会計の整理番号: UUID の小文字表記36文字（設計 v1.1 §6・D-7） */
+export const checkoutIdSchema = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
 /** 1行あたりの数量: 1〜99（設計 §6） */
 export const quantitySchema = z.number().int().min(1).max(99);
 
@@ -66,6 +71,7 @@ export const loginRequestSchema = z.object({
  * 単価を混ぜて送られても BFF の時点で消える（設計 §5.4 A-07・TC-14）。
  */
 export const checkoutRequestSchema = z.object({
+  checkoutId: checkoutIdSchema,
   memberCode: memberCodeSchema.nullable(),
   lines: z
     .array(z.object({ productCode: productCodeSchema, quantity: quantitySchema }))

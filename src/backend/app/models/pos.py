@@ -120,6 +120,8 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     transaction_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # 会計ごとの整理番号（UUID）。一意制約で同じ会計の二重保存を防ぐ（設計 §4.3 D-7）
+    checkout_id: Mapped[str] = mapped_column(CHAR(36), nullable=False, unique=True)
     # ミリ秒まで保持する（同一秒に複数会計が入るため）
     transacted_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
     # JWT の sub から確定した担当。リクエストからは受け取らない（設計 §5.4 A-07）

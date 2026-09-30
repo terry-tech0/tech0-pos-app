@@ -27,8 +27,12 @@ VALID_AMOUNT = {
 }
 
 
+VALID_CHECKOUT_ID = "3f2c8a1e-5b7d-4c9a-8e21-6d0f4b9a7c13"
+
+
 def checkout_body(**overrides: object) -> dict[str, object]:
     body: dict[str, object] = {
+        "checkout_id": VALID_CHECKOUT_ID,
         "member_code": "1000000001",
         "lines": [{"product_code": "4901234567894", "quantity": 1}],
         "client_amount": VALID_AMOUNT,
@@ -125,6 +129,33 @@ class TestLineCount:
         lines = [{"product_code": "49012345", "quantity": 1} for _ in range(101)]
         with pytest.raises(ValidationError):
             CheckoutRequest(**checkout_body(lines=lines))
+
+
+class TestCheckoutId:
+    """会計の整理番号。設計 v1.1 §6・D-7。UUID の小文字表記36文字だけを通す。"""
+
+    def test_valid(self) -> None:
+        assert CheckoutRequest(**checkout_body()).checkout_id == VALID_CHECKOUT_ID
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "",
+            "3F2C8A1E-5B7D-4C9A-8E21-6D0F4B9A7C13",  # 大文字。表記ゆれで別の会計扱いになるのを防ぐ
+            "3f2c8a1e5b7d4c9a8e216d0f4b9a7c13",  # ハイフンなし
+            "3f2c8a1e-5b7d-4c9a-8e21-6d0f4b9a7c13x",  # 37文字
+            "' OR '1'='1",
+        ],
+    )
+    def test_invalid(self, value: str) -> None:
+        with pytest.raises(ValidationError):
+            CheckoutRequest(**checkout_body(checkout_id=value))
+
+    def test_required(self) -> None:
+        body = checkout_body()
+        del body["checkout_id"]
+        with pytest.raises(ValidationError):
+            CheckoutRequest(**body)
 
 
 class TestRejectedFields:

@@ -33,6 +33,11 @@ ProductName = Annotated[str, StringConstraints(min_length=1, max_length=100)]
 UnitPrice = Annotated[int, Field(ge=0, le=999_999, strict=True)]
 Quantity = Annotated[int, Field(ge=1, le=99, strict=True)]
 Yen = Annotated[int, Field(ge=0, le=9_999_999, strict=True)]
+# 会計の整理番号。UUID の小文字表記（36文字）に固定する（設計 §6・§4.3 D-7）
+CheckoutId = Annotated[
+    str,
+    StringConstraints(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+]
 
 
 # ── 認証 ──
@@ -155,8 +160,10 @@ class CheckoutRequest(BaseModel):
     """B-06 POST /transactions のリクエスト。
 
     cashier_id を**定義していない**のが要点。担当は JWT の sub から決める（詐称防止）。
+    checkout_id は会計ごとの整理番号。同じ番号の2回目は保存せず、保存済みの取引を返す（設計 v1.1 D-7）。
     """
 
+    checkout_id: CheckoutId
     member_code: Optional[MemberCode] = None
     # 1〜100行。0件は E-TXN-002、101行以上は E-VAL-003
     lines: list[CheckoutLineIn] = Field(min_length=1, max_length=100)

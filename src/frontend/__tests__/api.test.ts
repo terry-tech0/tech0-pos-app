@@ -75,6 +75,7 @@ describe("★UT-FE-076 Authorization ヘッダを付けないこと", () => {
   test("購入確定でも Authorization を送らない", async () => {
     mockFetch.mockResolvedValue(jsonResponse({}, 201));
     await checkout({
+      checkoutId: "3f2c8a1e-5b7d-4c9a-8e21-6d0f4b9a7c13",
       memberCode: null,
       lines: [{ productCode: "49012345", quantity: 1 }],
       clientAmount: { subtotal: 100, discount: 0, taxReduced: 8, taxStandard: 0, total: 108 },
@@ -123,6 +124,7 @@ describe("異常系", () => {
     );
     try {
       await checkout({
+        checkoutId: "3f2c8a1e-5b7d-4c9a-8e21-6d0f4b9a7c13",
         memberCode: "1000000001",
         lines: [{ productCode: "4901234567894", quantity: 2 }],
         clientAmount: { subtotal: 0, discount: 0, taxReduced: 0, taxStandard: 0, total: 0 },

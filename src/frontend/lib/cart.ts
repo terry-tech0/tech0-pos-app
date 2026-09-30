@@ -96,6 +96,17 @@ export function clearCart(): CartLine[] {
   return [];
 }
 
+/**
+ * 会計の整理番号を作る。設計 v1.1 §4.3 D-7・§9.3。
+ *
+ * 会計の開始時に1つ作り、金額不一致や通信エラーで押し直すときも同じ番号を送る。
+ * サーバは同じ番号の2回目を保存せず、保存済みの取引を返す（二重保存の防止）。
+ * 作り直すのは保存に成功したあとだけ。
+ */
+export function newCheckoutId(): string {
+  return crypto.randomUUID();
+}
+
 /** 購入ボタンを押せるか。明細0件では押させない（設計 §9.2・E-TXN-002） */
 export function canCheckout(lines: CartLine[]): boolean {
   return lines.length > 0 && lines.length <= LINE_COUNT_MAX;

@@ -12,6 +12,7 @@ from decimal import Decimal
 from typing import Sequence
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.enums import TaxCategory
@@ -123,9 +124,16 @@ class TransactionRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def find_by_checkout_id(self, checkout_id: str) -> Transaction | None:
+        """整理番号で保存済みの取引を引く。二重送信の判定に使う（設計 §4.3 D-7）。"""
+        return self._session.scalar(
+            select(Transaction).where(Transaction.checkout_id == checkout_id)
+        )
+
     def save(
         self,
         *,
+        checkout_id: str,
         transacted_at: datetime,
         cashier_id: int,
         member_code: str | None,
@@ -139,8 +147,12 @@ class TransactionRepository:
         """ヘッダと明細を1トランザクションで保存する。
 
         commit はここで行う。途中で失敗したら明細だけ残る、という状態を作らない。
+
+        Raises:
+            DuplicateCheckoutError: 同じ整理番号の取引がほぼ同時に保存された（一意制約違反）
         """
         transaction = Transaction(
+            checkout_id=checkout_id,
             transacted_at=transacted_at,
             cashier_id=cashier_id,
             member_code=member_code,
@@ -152,6 +164,18 @@ class TransactionRepository:
         )
         transaction.lines = list(lines)
         self._session.add(transaction)
-        self._session.commit()
+        try:
+            self._session.commit()
+        except IntegrityError:
+            self._session.rollback()
+            # 先に判定を通り抜けた同じ会計が、わずかな差で先に保存した場合だけ扱う。
+            # それ以外の制約違反（外部キー等）はそのまま上に投げる
+            if self.find_by_checkout_id(checkout_id) is not None:
+                raise DuplicateCheckoutError(checkout_id) from None
+            raise
         self._session.refresh(transaction)
         return transaction
+
+
+class DuplicateCheckoutError(Exception):
+    """同じ整理番号の取引が既に保存されている。呼び出し側は保存済みの取引を返す。"""

@@ -2,6 +2,7 @@
 
 from app.repositories.pos import (
     CashierRepository,
+    DuplicateCheckoutError,
     MemberRepository,
     ProductRepository,
     TaxRateRepository,
@@ -10,6 +11,7 @@ from app.repositories.pos import (
 
 __all__ = [
     "CashierRepository",
+    "DuplicateCheckoutError",
     "MemberRepository",
     "ProductRepository",
     "TaxRateRepository",

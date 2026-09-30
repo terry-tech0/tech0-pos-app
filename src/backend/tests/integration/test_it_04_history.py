@@ -43,16 +43,52 @@ def test_it_041_saved_amounts(logged_in_client, make_checkout_request, db: DB):
     }
 
 
-# IT-042（TC-19）：同じ確定リクエストを連続2回送っても、取引は1件だけ（または2件目を拒否）
+# IT-042（TC-19）：同じ確定リクエストを連続2回送っても、取引は1件だけ（設計 v1.1 D-7）
+# 2回目は保存せず、保存済みの取引を 200 で返す
 def test_it_042_double_submit(logged_in_client, make_checkout_request, db: DB):
     payload = make_checkout_request(lines=BASIC_LINES, member_code=MEMBER)
     first = logged_in_client.post("/transactions", json=payload)
     second = logged_in_client.post("/transactions", json=payload)
     assert first.status_code == 201
-    count = db.fetch_val("SELECT COUNT(*) FROM transactions")
-    assert count == 1 or 400 <= second.status_code < 500, (
-        f"2回目が {second.status_code} で受理され、取引が {count} 件保存された"
-    )
+    assert second.status_code == 200
+    assert second.json()["transaction_id"] == first.json()["transaction_id"]
+    assert second.json()["amount"] == first.json()["amount"]
+    assert len(second.json()["lines"]) == 3
+    assert db.fetch_val("SELECT COUNT(*) FROM transactions") == 1
+    assert db.fetch_val("SELECT COUNT(*) FROM transaction_lines") == 3
+
+
+# IT-042 補足：ほぼ同時の二重送信。事前の判定をすり抜けても、一意制約で2件目を止める
+def test_it_042b_double_submit_race(logged_in_client, make_checkout_request, db: DB, monkeypatch):
+    from app.repositories import TransactionRepository
+
+    payload = make_checkout_request(lines=BASIC_LINES, member_code=MEMBER)
+    first = logged_in_client.post("/transactions", json=payload)
+    assert first.status_code == 201
+
+    # 2回目の最初の判定だけ「まだ保存されていない」と見せる（同時に届いた状況の再現）
+    original = TransactionRepository.find_by_checkout_id
+    calls = {"n": 0}
+
+    def _first_miss(self, checkout_id):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else original(self, checkout_id)
+
+    monkeypatch.setattr(TransactionRepository, "find_by_checkout_id", _first_miss)
+    second = logged_in_client.post("/transactions", json=payload)
+    assert second.status_code == 200, second.text
+    assert second.json()["transaction_id"] == first.json()["transaction_id"]
+    assert db.fetch_val("SELECT COUNT(*) FROM transactions") == 1
+
+
+# IT-042 補足：別の会計（整理番号が違う）は、同じ内容でも別の取引として保存される
+def test_it_042c_different_checkout_ids_are_separate(logged_in_client, make_checkout_request, db: DB):
+    for _ in range(2):
+        res = logged_in_client.post(
+            "/transactions", json=make_checkout_request(lines=BASIC_LINES, member_code=MEMBER)
+        )
+        assert res.status_code == 201
+    assert db.fetch_val("SELECT COUNT(*) FROM transactions") == 2
 
 
 # IT-043：明細は商品名・単価・適用税率を値として転記している（D-1 / P-3）

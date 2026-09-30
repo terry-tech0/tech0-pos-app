@@ -84,6 +84,7 @@ def test_it_037_lines_101(logged_in_client, make_checkout_request, db: DB):
 # IT-038（TC-10）：明細0件は E-TXN-002
 def test_it_038_no_lines(logged_in_client, db: DB):
     payload = {
+        "checkout_id": "3f2c8a1e-5b7d-4c9a-8e21-6d0f4b9a7c13",
         "member_code": None,
         "lines": [],
         "client_amount": {"subtotal": 0, "discount": 0, "tax_reduced": 0, "tax_standard": 0, "total": 0},

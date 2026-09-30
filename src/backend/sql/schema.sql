@@ -91,6 +91,8 @@ CREATE TABLE IF NOT EXISTS tax_rates (
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS transactions (
   transaction_id  BIGINT      NOT NULL AUTO_INCREMENT,
+  -- 会計ごとの整理番号（UUID）。一意制約で同じ会計の二重保存を防ぐ（設計 §4.3 D-7）
+  checkout_id     CHAR(36)    NOT NULL,
   -- ミリ秒まで保持する（同一秒に複数会計が入るため）
   transacted_at   DATETIME(3) NOT NULL,
   -- JWT の sub から確定した担当。リクエストからは受け取らない（設計 §5.4 A-07）
@@ -106,6 +108,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   total           INT         NOT NULL,
   created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (transaction_id),
+  UNIQUE KEY uq_transactions_checkout_id (checkout_id),
   KEY ix_transactions_transacted_at (transacted_at),
   KEY ix_transactions_cashier_id (cashier_id),
   CONSTRAINT fk_transactions_cashier

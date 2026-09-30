@@ -11,8 +11,9 @@ from decimal import Decimal
 
 from app.enums import TaxCategory
 from app.errors import AppError, ErrorCode
-from app.models import TransactionLine
+from app.models import Transaction, TransactionLine
 from app.repositories import (
+    DuplicateCheckoutError,
     MemberRepository,
     ProductRepository,
     TaxRateRepository,
@@ -49,17 +50,27 @@ class CheckoutService:
         self._transactions = transactions
         self._calculator = calculator or AmountCalculator()
 
-    def confirm(self, request: CheckoutRequest, cashier_id: int) -> CheckoutResponse:
+    def confirm(self, request: CheckoutRequest, cashier_id: int) -> tuple[CheckoutResponse, bool]:
         """購入を確定して購入履歴を保存する。設計 §8.6 の手順1〜6。
 
         Args:
             request: 画面から来た確定要求。**単価も税率も担当IDも含まれない**
             cashier_id: JWT の sub から確定した担当。リクエストからは受け取らない
 
+        Returns:
+            (応答, 新規に保存したか)。同じ整理番号の取引が保存済みなら、
+            保存せずにその取引を返し、2つ目は False になる（設計 v1.1 D-7）
+
         Raises:
             AppError: E-PROD-001（未登録商品）／E-MEMB-001（会員なし）／
                 E-TXN-001（金額照合の不一致）／E-VAL-001（金額が上限超過）
         """
+        # 二重送信: 同じ整理番号の取引が保存済みなら、何もせずにそれを返す。
+        # 再計算もしない（その間に税率やマスタが変わっていても、保存済みの事実を返す）
+        existing = self._transactions.find_by_checkout_id(request.checkout_id)
+        if existing is not None:
+            return to_response(existing), False
+
         transacted_at = datetime.now(JST)
 
         # 手順2: 単価・税率・会員割引区分をマスタから引き直す。
@@ -148,24 +159,34 @@ class CheckoutService:
                 )
             )
 
-        transaction = self._transactions.save(
-            # DBは naive datetime で持つので、JST のまま tzinfo を外して渡す
-            transacted_at=transacted_at.replace(tzinfo=None),
-            cashier_id=cashier_id,
-            member_code=request.member_code,
-            subtotal=server_amount.subtotal,
-            discount_amount=server_amount.discount,
-            tax_reduced=server_amount.tax_reduced,
-            tax_standard=server_amount.tax_standard,
-            total=server_amount.total,
-            lines=lines_to_save,
-        )
+        try:
+            transaction = self._transactions.save(
+                checkout_id=request.checkout_id,
+                # DBは naive datetime で持つので、JST のまま tzinfo を外して渡す
+                transacted_at=transacted_at.replace(tzinfo=None),
+                cashier_id=cashier_id,
+                member_code=request.member_code,
+                subtotal=server_amount.subtotal,
+                discount_amount=server_amount.discount,
+                tax_reduced=server_amount.tax_reduced,
+                tax_standard=server_amount.tax_standard,
+                total=server_amount.total,
+                lines=lines_to_save,
+            )
+        except DuplicateCheckoutError:
+            # 上の判定とこの保存の間に、同じ会計が先に保存された（ほぼ同時の二重送信）
+            existing = self._transactions.find_by_checkout_id(request.checkout_id)
+            assert existing is not None
+            return to_response(existing), False
 
-        return CheckoutResponse(
-            transaction_id=transaction.transaction_id,
-            transacted_at=transacted_at,
-            amount=to_amount(server_amount),
-            lines=confirmed_lines,
+        return (
+            CheckoutResponse(
+                transaction_id=transaction.transaction_id,
+                transacted_at=transacted_at,
+                amount=to_amount(server_amount),
+                lines=confirmed_lines,
+            ),
+            True,
         )
 
     @staticmethod
@@ -199,6 +220,35 @@ class CheckoutService:
                 }
             },
         )
+
+
+def to_response(transaction: Transaction) -> CheckoutResponse:
+    """保存済みの取引を確定応答の形に戻す。二重送信の2回目に返す。"""
+    return CheckoutResponse(
+        transaction_id=transaction.transaction_id,
+        # DBには JST の naive datetime で入っているので、オフセットを付け直す
+        transacted_at=transaction.transacted_at.replace(tzinfo=JST),
+        amount=Amount(
+            subtotal=transaction.subtotal,
+            discount=transaction.discount_amount,
+            tax_reduced=transaction.tax_reduced,
+            tax_standard=transaction.tax_standard,
+            total=transaction.total,
+        ),
+        lines=[
+            ConfirmedLine(
+                line_no=line.line_no,
+                product_code=line.product_code,
+                product_name=line.product_name,
+                unit_price=line.unit_price,
+                quantity=line.quantity,
+                tax_category=TaxCategory(line.tax_category),
+                applied_tax_rate=Decimal(line.applied_tax_rate),
+                line_amount=line.line_amount,
+            )
+            for line in transaction.lines
+        ],
+    )
 
 
 def to_amount(summary: AmountSummary) -> Amount:

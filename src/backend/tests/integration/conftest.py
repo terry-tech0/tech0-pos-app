@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Callable, Iterator
 from datetime import date
 from decimal import Decimal
@@ -96,6 +97,8 @@ def engine() -> Iterator[Engine]:
     server.dispose()
 
     eng = get_engine()
+    # テスト専用スキーマなので、毎回モデル定義から作り直す（列の追加にも追従させる）
+    Base.metadata.drop_all(bind=eng)
     Base.metadata.create_all(bind=eng)
     yield eng
     eng.dispose()
@@ -258,6 +261,7 @@ def make_checkout_request(db: DB) -> Callable[..., dict[str, Any]]:
 
         amount = AmountCalculator().calculate(calc_lines, is_member, rates)
         return {
+            "checkout_id": str(uuid.uuid4()),
             "member_code": member_code,
             "lines": [{"product_code": code, "quantity": qty} for code, qty in lines],
             "client_amount": {
