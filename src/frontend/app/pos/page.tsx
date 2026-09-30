@@ -67,6 +67,11 @@ export default function PosPage() {
   const [productError, setProductError] = useState<string | null>(null);
 
   const [lines, setLines] = useState<CartLine[]>([]);
+  // 最新の購入リスト。商品照会の応答を待つ間に別の商品が追加されても、古いリストで上書きしないため
+  const linesRef = useRef<CartLine[]>(lines);
+  linesRef.current = lines;
+  // 商品照会の待ち行列。連続スキャンを読んだ順に処理する
+  const scanQueueRef = useRef<Promise<void>>(Promise.resolve());
   // 会計の整理番号。押し直しでは作り直さず、保存に成功したら次の会計用に作り直す（設計 v1.1 §9.3）
   const [checkoutId, setCheckoutId] = useState<string>(() => newCheckoutId());
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -183,14 +188,26 @@ export default function PosPage() {
     event.preventDefault();
     setProductError(null);
     const code = productCodeInput.trim();
+    // 問い合わせの完了を待たずに入力欄を空にする。スキャナは前の商品の応答を待たずに
+    // 次のコードを打ち込むので、後から空にすると次のコードが消えたり前のコードとつながる
+    setProductCodeInput("");
     if (code === "") {
       return;
     }
     // 次のお客様の操作が始まったので、前の会計の完了メッセージを消す（設計 v1.2 §9.2）
     setDoneMessage(null);
+    // 読んだ順に1件ずつ処理する。並行して問い合わせると応答の順に並び、
+    // お客様の商品とリストを見比べるときに順番が食い違う
+    const next = scanQueueRef.current.then(() => addByCode(code));
+    scanQueueRef.current = next;
+    await next;
+  }
+
+  async function addByCode(code: string) {
     try {
       const product = await fetchProduct(code);
-      const result = addProduct(lines, product);
+      // 応答を待つ間に別の商品が追加されていることがあるので、最新のリストに足す
+      const result = addProduct(linesRef.current, product);
       if (!result.ok) {
         // 数量上限・行数上限。リストは維持する（ER-1）
         setProductError(
@@ -199,6 +216,7 @@ export default function PosPage() {
             : "数量は1〜99で入力してください",
         );
       } else {
+        linesRef.current = result.lines;
         setLines(result.lines);
         // 金額が変わったのでサーバ値の表示は取り下げる
         setServerAmount(null);
@@ -212,9 +230,7 @@ export default function PosPage() {
       // 未登録商品でも購入リストの他の商品は消さない（ER-1・TC-11）
       setProductError(errorText(e, "システムに接続できません"));
     } finally {
-      // 成否にかかわらず入力欄を空にしてフォーカスを戻す。
-      // 連続スキャンが止まらないようにするため（設計 §9.2 ②）
-      setProductCodeInput("");
+      // 成否にかかわらずフォーカスを戻す。連続スキャンが止まらないようにするため（設計 §9.2 ②）
       productInputRef.current?.focus();
     }
   }
@@ -287,6 +303,13 @@ export default function PosPage() {
         const fromServer = error.details?.serverAmount as Amount | undefined;
         if (fromServer !== undefined) {
           setServerAmount(fromServer);
+        }
+        // 画面を開いている間に税率が改定されていると、古い税率のままでは押し直しても一致しない。
+        // 税率を読み直して、次の計算を最新の税率で行う（設計 v1.2 §7.1 E-TXN-001）
+        try {
+          setTaxRates(await fetchTaxRates());
+        } catch {
+          // 読み直せなくても、表示はサーバの金額に揃っているので会計は続けられる
         }
       }
       // 購入リストは保持したまま「商品登録中」に戻す（ER-1）
