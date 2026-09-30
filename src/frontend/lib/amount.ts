@@ -50,6 +50,16 @@ function toBasisPoints(rate: number): number {
 }
 
 /**
+ * 税率の表示用ラベル（0.08 → "8%"、0.1 → "10%"、0.0125 → "1.25%"）。設計 v1.2 §9.2 ③④。
+ *
+ * 画面に「8%」を文字で埋め込まず、税率マスタの値から作る。
+ * 埋め込むと、税率を改定しても表示だけ古いまま残る（REQ-08）。
+ */
+export function taxRateLabel(rate: number): string {
+  return `${toBasisPoints(rate) / 100}%`;
+}
+
+/**
  * 消費税額。設計 §4.4 手順6。区分ごとに1回だけ切り捨てる。
  *
  * 行ごとに税を計算して足すと、まとめて計算した場合と1円ずれる。

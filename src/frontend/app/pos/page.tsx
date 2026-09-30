@@ -21,7 +21,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, checkout, fetchMe, fetchMember, fetchProduct, fetchTaxRates, logout } from "@/lib/api";
-import { calculateAmount } from "@/lib/amount";
+import { calculateAmount, taxRateLabel } from "@/lib/amount";
 import {
   addProduct,
   canCheckout,
@@ -31,10 +31,22 @@ import {
   removeLine,
   toRequestLines,
 } from "@/lib/cart";
+import { memberCodeSchema } from "@/lib/validation";
 import type { Amount, CartLine, Me, Member, TaxRateMap } from "@/types/pos";
 
 /** 画面の状態。設計 §9.3 の4状態 */
 type ScreenState = "waitingMember" | "registering" | "confirming" | "done";
+
+/** 接続できないときに添える次の行動（設計 v1.2 §7.1 E-SYS-002・NFR-OPS-02） */
+const MANUAL_REGISTER_GUIDE = "手動レジで会計を続け、店長に連絡してください";
+
+/** エラーを画面の文言にする。接続できない場合は次の行動の案内を添える */
+function errorText(e: unknown, fallback: string): string {
+  if (e instanceof ApiError && e.code === "E-SYS-002") {
+    return `${e.message}。${MANUAL_REGISTER_GUIDE}`;
+  }
+  return e instanceof ApiError ? e.message : fallback;
+}
 
 export default function PosPage() {
   const router = useRouter();
@@ -79,14 +91,14 @@ export default function PosPage() {
         if (!cancelled) {
           setMe(meResult);
           setTaxRates(rates);
+          // ログイン直後は会員番号の読み込みから始める（設計 v1.2 §9.2 ①）
+          memberInputRef.current?.focus();
         }
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) {
           handleAuthExpired();
         } else if (!cancelled) {
-          setCheckoutError(
-            e instanceof ApiError ? e.message : "システムに接続できません",
-          );
+          setCheckoutError(errorText(e, "システムに接続できません"));
         }
       }
     })();
@@ -117,8 +129,17 @@ export default function PosPage() {
     event.preventDefault();
     setMemberError(null);
     setOfferNonMember(false);
+    setDoneMessage(null);
+    const code = memberCodeInput.trim();
+    // 桁数・文字種が違う番号はサーバに問い合わせない（設計 §6・v1.2 §9.2 ①）
+    if (!memberCodeSchema.safeParse(code).success) {
+      setMemberError("入力の形式が正しくありません");
+      // 打ち直しで前の番号に継ぎ足されないよう、選択状態にして置き換えられるようにする
+      memberInputRef.current?.select();
+      return;
+    }
     try {
-      const found = await fetchMember(memberCodeInput.trim());
+      const found = await fetchMember(code);
       setMember(found);
       setTreatAsNonMember(false);
       setMemberCodeInput("");
@@ -132,7 +153,7 @@ export default function PosPage() {
         return;
       }
       const error = e instanceof ApiError ? e : null;
-      setMemberError(error?.message ?? "システムに接続できません");
+      setMemberError(errorText(e, "システムに接続できません"));
       // 会員が見つからないときは「非会員として続行」を選べるようにする（会計を止めない）
       setOfferNonMember(error?.code === "E-MEMB-001");
     }
@@ -151,6 +172,7 @@ export default function PosPage() {
     setMemberError(null);
     setOfferNonMember(false);
     setServerAmount(null);
+    setDoneMessage(null);
     setState("registering");
     productInputRef.current?.focus();
   }
@@ -164,6 +186,8 @@ export default function PosPage() {
     if (code === "") {
       return;
     }
+    // 次のお客様の操作が始まったので、前の会計の完了メッセージを消す（設計 v1.2 §9.2）
+    setDoneMessage(null);
     try {
       const product = await fetchProduct(code);
       const result = addProduct(lines, product);
@@ -186,7 +210,7 @@ export default function PosPage() {
         return;
       }
       // 未登録商品でも購入リストの他の商品は消さない（ER-1・TC-11）
-      setProductError(e instanceof ApiError ? e.message : "システムに接続できません");
+      setProductError(errorText(e, "システムに接続できません"));
     } finally {
       // 成否にかかわらず入力欄を空にしてフォーカスを戻す。
       // 連続スキャンが止まらないようにするため（設計 §9.2 ②）
@@ -210,8 +234,12 @@ export default function PosPage() {
     setServerAmount(null);
   }
 
-  function handleRemove(productCode: string) {
-    setLines(removeLine(lines, productCode));
+  function handleRemove(line: CartLine) {
+    // 押し間違いで行が消えないよう、確認してから消す（設計 v1.2 §9.2 ③）
+    if (!window.confirm(`「${line.productName}」を購入リストから削除しますか？`)) {
+      return;
+    }
+    setLines(removeLine(lines, line.productCode));
     setServerAmount(null);
     setProductError(null);
   }
@@ -245,13 +273,15 @@ export default function PosPage() {
       setTreatAsNonMember(false);
       setServerAmount(null);
       setState("done");
+      // 次のお客様は会員番号の読み込みから始める（設計 v1.2 §9.2 ①・UAT-008）
+      memberInputRef.current?.focus();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         handleAuthExpired();
         return;
       }
       const error = e instanceof ApiError ? e : null;
-      setCheckoutError(error?.message ?? "エラーが発生しました。店長に連絡してください");
+      setCheckoutError(errorText(e, "エラーが発生しました。店長に連絡してください"));
       if (error?.code === "E-TXN-001") {
         // 保存されていない。サーバ計算値で合計表示を更新し、押し直させる（ER-5）
         const fromServer = error.details?.serverAmount as Amount | undefined;
@@ -356,6 +386,7 @@ export default function PosPage() {
                 <thead>
                   <tr>
                     <th>商品名</th>
+                    <th className="num">税率</th>
                     <th className="num">単価</th>
                     <th className="num">数量</th>
                     <th className="num">金額</th>
@@ -365,10 +396,10 @@ export default function PosPage() {
                 <tbody>
                   {lines.map((line) => (
                     <tr key={line.productCode}>
-                      <td>
-                        {line.productName}
-                        {/* 軽減税率対象に ※ を付ける（設計 §9.2 ③） */}
-                        {line.taxCategory === "REDUCED" && " ※"}
+                      <td>{line.productName}</td>
+                      {/* 適用税率を税率マスタの値から表示する（設計 v1.2 §9.2 ③） */}
+                      <td className="num">
+                        {taxRates !== null ? taxRateLabel(taxRates[line.taxCategory]) : ""}
                       </td>
                       <td className="num">{line.unitPrice.toLocaleString()}</td>
                       <td className="num">
@@ -386,7 +417,7 @@ export default function PosPage() {
                         <button
                           type="button"
                           className="secondary"
-                          onClick={() => handleRemove(line.productCode)}
+                          onClick={() => handleRemove(line)}
                         >
                           削除
                         </button>
@@ -395,7 +426,6 @@ export default function PosPage() {
                   ))}
                 </tbody>
               </table>
-              <p className="muted">※ ＝ 軽減税率8%対象</p>
             </>
           )}
         </div>
@@ -411,7 +441,8 @@ export default function PosPage() {
                 <span>税抜合計</span>
                 <span>{amount.subtotal.toLocaleString()} 円</span>
               </div>
-              {amount.discount > 0 && (
+              {/* 割引対象の会員なら0円でも出す。行が消えると会員が読めていないように見える（v1.2） */}
+              {(amount.discount > 0 || member?.isDiscountTarget === true) && (
                 <div>
                   <span>会員割引（5%）</span>
                   <span>− {amount.discount.toLocaleString()} 円</span>
@@ -423,11 +454,11 @@ export default function PosPage() {
                 （按分の内訳は公開しない設計）。誤った数字を出さないよう税額のみ表示する。
               */}
               <div>
-                <span>消費税（8%対象）</span>
+                <span>消費税（{taxRates !== null ? taxRateLabel(taxRates.REDUCED) : ""}対象）</span>
                 <span>{amount.taxReduced.toLocaleString()} 円</span>
               </div>
               <div>
-                <span>消費税（10%対象）</span>
+                <span>消費税（{taxRates !== null ? taxRateLabel(taxRates.STANDARD) : ""}対象）</span>
                 <span>{amount.taxStandard.toLocaleString()} 円</span>
               </div>
               <div className="grand">

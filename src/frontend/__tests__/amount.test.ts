@@ -7,7 +7,7 @@
  *   どちらかの実装がずれたら、必ずどちらかのテストが落ちる。
  */
 
-import { calculateAmount, lineAmountOf, taxOf } from "@/lib/amount";
+import { calculateAmount, lineAmountOf, taxOf, taxRateLabel } from "@/lib/amount";
 import type { CartLine, TaxRateMap } from "@/types/pos";
 
 /** 現行の税率（fixtures/tax_rates.csv と同じ） */
@@ -143,5 +143,16 @@ describe("補助関数", () => {
     expect(taxOf(450, 0.08)).toBe(36);
     expect(taxOf(284, 0.1)).toBe(28);
     expect(taxOf(12, 0.08)).toBe(0);
+  });
+});
+
+describe("taxRateLabel（設計 v1.2 §9.2 税率の表示）", () => {
+  test.each([
+    [0.08, "8%"],
+    [0.1, "10%"],
+    [0.01, "1%"],
+    [0.0125, "1.25%"],
+  ])("%s は %s と表示する", (rate, label) => {
+    expect(taxRateLabel(rate)).toBe(label);
   });
 });
