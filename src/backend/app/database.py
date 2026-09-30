@@ -12,6 +12,8 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any, Iterator
 
+import certifi
+
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -23,7 +25,9 @@ def _connect_args(database_url: str, use_ssl: bool) -> dict[str, Any]:
 
     Azure Database for MySQL は SSL 必須（設計 §2.4 の DATABASE_URL の備考）。
     PyMySQL では ssl に辞書を渡すと SSL で繋ぐ。
-    空の辞書でよく、サーバ証明書のCAを別途置く必要はない。
+    ただし空の辞書は不可。PyMySQL は `if ssl:` で判定するため、{} は偽とみなされ
+    SSL なしで繋ぎに行き、Azure に拒否される（エラー3159。2026-09-30 実DB接続で判明）。
+    CA には certifi の証明書束を渡し、サーバ証明書の検証もする。
 
     ローカルの MySQL や SQLite では SSL を使わないので、DB_SSL=false で外せる。
     """
@@ -32,7 +36,7 @@ def _connect_args(database_url: str, use_ssl: bool) -> dict[str, Any]:
     if not database_url.startswith("mysql"):
         # SQLite 等に ssl を渡すと落ちるので、MySQL のときだけ付ける
         return {}
-    return {"ssl": {}}
+    return {"ssl": {"ca": certifi.where()}}
 
 
 @lru_cache(maxsize=1)
